@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Space Shooter - App Mode Edition</title>
+    <title>Space Shooter - Perfect Control Edition</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,10 +55,18 @@ let score = 0;
 
 const DOT_SIZE = 5; 
 
+// 📏 画面レイアウトの定義
+const GAME_HEIGHT = 480; // ゲームが動くエリアの高さ（上側）
+const UI_TOP = 480;      // 操作パネルが始まるY座標（下側）
+const UI_HEIGHT = 120;   // 操作パネル全体の高さ
+
+// 🎮 操作モード設定 ('1hand' = 片手レイアウト, '2hand' = 両手レイアウト)
+let controlMode = '1hand';
+
 // 自機データ
 const player = {
     x: 180,
-    y: 520,
+    y: 420, 
     width: 40,
     height: 40,
     maxLives: 3,
@@ -71,9 +79,34 @@ const player = {
     speed: 5.5 
 };
 
-// 🕹️ 仮想ボタンの配置データ
-const btnLeft = { x: 30, y: 500, width: 60, height: 60, isPressed: false };
-const btnRight = { x: 110, y: 500, width: 60, height: 60, isPressed: false };
+// 🕹️ 仮想ボタンの基本データ
+const btnLeft = { x: 0, y: 0, width: 75, height: 75, isPressed: false };
+const btnRight = { x: 0, y: 0, width: 75, height: 75, isPressed: false };
+
+// ⚙️ タイトル画面用の設定ボタンの当たり判定
+const optBtn1Hand = { x: 50, y: 340, width: 130, height: 40 };
+const optBtn2Hand = { x: 220, y: 340, width: 130, height: 40 };
+const startTriggerBtn = { x: 50, y: 240, width: 300, height: 60 };
+
+// ボタンの位置をモードに合わせて更新する関数
+function updateButtonLayout() {
+    const centerY = UI_TOP + (UI_HEIGHT - btnLeft.height) / 2;
+    
+    if (controlMode === '1hand') {
+        btnLeft.x = 25;
+        btnLeft.y = centerY;
+        btnRight.x = 115;
+        btnRight.y = centerY;
+    } else {
+        btnLeft.x = 25;
+        btnLeft.y = centerY;
+        btnRight.x = canvas.width - btnRight.width - 25;
+        btnRight.y = centerY;
+    }
+}
+
+// 起動時に初期配置を計算
+updateButtonLayout();
 
 // 背景用データ
 const stars = [];
@@ -90,149 +123,76 @@ for (let i = 0; i < maxStars; i++) {
 }
 
 const COLOR_MAP = {
-    '.': null,
-    'C': '#00ffff', 'B': '#0055ff', 'W': '#ffffff', 
-    'K': '#1a1a24', 'P': '#8000ff', 'R': '#ff0055', 
-    'Y': '#e6b800', 'O': '#ff6600',                 
-    'G': '#00cc44', 'D': '#006622',                 
-    'L': '#00ff66',                                 
-    'I_R': '#ff3333', 'I_B': '#3399ff', 'I_G': '#00ff66',            
-    'E_B': '#ff3333', 'B_O': '#ff9900', 'B_Y': '#ffff00',
-    
-    'ME1': '#8a8a93', 'ME2': '#5a5a61', 
-    'VE1': '#e39b5d', 'VE2': '#bf6a2a', 
-    'EA1': '#2b82c9', 'EA2': '#4caf50', 'EA3': '#ffffff', 
-    'MA1': '#c1440e', 'MA2': '#e77d11', 
-    'JU1': '#b07f35', 'JU2': '#e3ba8f', 'JU3': '#851c1c', 
-    'SA1': '#e2bf7d', 'SA2': '#b08f54', 'RI1': '#d4b373', 
-    'UR1': '#4b70dd', 'UR2': '#7ca1f7', 
-    'NE1': '#274687', 'NE2': '#1b305e'  
+    '.': null, 'C': '#00ffff', 'B': '#0055ff', 'W': '#ffffff', 'K': '#1a1a24', 'P': '#8000ff', 'R': '#ff0055', 'Y': '#e6b800', 'O': '#ff6600', 'G': '#00cc44', 'D': '#006622', 'L': '#00ff66', 'I_R': '#ff3333', 'I_B': '#3399ff', 'I_G': '#00ff66', 'E_B': '#ff3333', 'B_O': '#ff9900', 'B_Y': '#ffff00',
+    'ME1': '#8a8a93', 'ME2': '#5a5a61', 'VE1': '#e39b5d', 'VE2': '#bf6a2a', 'EA1': '#2b82c9', 'EA2': '#4caf50', 'EA3': '#ffffff', 'MA1': '#c1440e', 'MA2': '#e77d11', 'JU1': '#b07f35', 'JU2': '#e3ba8f', 'JU3': '#851c1c', 'SA1': '#e2bf7d', 'SA2': '#b08f54', 'RI1': '#d4b373', 'UR1': '#4b70dd', 'UR2': '#7ca1f7', 'NE1': '#274687', 'NE2': '#1b305e'  
 };
 
-const PLAYER_SPRITE = [
-    '. . . W W . . .', '. . . C C . . .', '. . B C C B . .', '. B B C C B B .',
-    '. W B B B B W .', 'B C C C C C C B', 'B B . W W . B B', '. . . W W . . .'
-].map(line => line.split(' '));
-
-const ENEMY_NORMAL = [
-    'K . . . . . . K', '. P K . . K P .', '. P P P P P P .', 'K P R P P R P K',
-    'K K P P P P K K', '. K P P P P K .', '. P K . . K P .', 'P . . . . . . P'
-].map(line => line.split(' '));
-
-const ENEMY_SHOOTER = [
-    '. K . . . . K .', 'K Y K . . K Y K', 'K Y O Y Y O Y K', '. Y Y Y Y Y Y .',
-    '. . O O O O . .', '. Y K Y Y K Y .', 'Y . K . . K . Y', 'K . . . . . . K'
-].map(line => line.split(' '));
-
-const ENEMY_HEAVY = [
-    '. . D D D D . .', '. D G G G G D .', 'D G G K K G G D', 'D G R K K R G D',
-    'D G G G G G G D', '. D G G G G D .', '. D K D D K D .', 'D . . . . . . D'
-].map(line => line.split(' '));
-
+const PLAYER_SPRITE = ['. . . W W . . .', '. . . C C . . .', '. . B C C B . .', '. B B C C B B .', '. W B B B B W .', 'B C C C C C C B', 'B B . W W . B B', '. . . W W . . .'].map(line => line.split(' '));
+const ENEMY_NORMAL = ['K . . . . . . K', '. P K . . K P .', '. P P P P P P .', 'K P R P P R P K', 'K K P P P P K K', '. K P P P P K .', '. P K . . K P .', 'P . . . . . . P'].map(line => line.split(' '));
+const ENEMY_SHOOTER = ['. K . . . . K .', 'K Y K . . K Y K', 'K Y O Y Y O Y K', '. Y Y Y Y Y Y .', '. . O O O O . .', '. Y K Y Y K Y .', 'Y . K . . K . Y', 'K . . . . . . K'].map(line => line.split(' '));
+const ENEMY_HEAVY = ['. . D D D D . .', '. D G G G G D .', 'D G G K K G G D', 'D G R K K R G D', 'D G G G G G G D', '. D G G G G D .', '. D K D D K D .', 'D . . . . . . D'].map(line => line.split(' '));
 const ITEM_SPRITE_RED = ['. . K K K . . .','. . K I_R K . . .','. K K K K K . .','. K I_R I_R I_R K . .','. K I_R W I_R K . .','. K I_R I_R I_R K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 const ITEM_SPRITE_BLUE = ['. . K K K . . .','. . K I_B K . . .','. K K K K K . .','. K I_B I_B I_B K . .','. K I_B W I_B K . .','. K I_B I_B I_B K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 const ITEM_SPRITE_GREEN = ['. . K K K . . .','. . K I_G K . . .','. K K K K K . .','. K I_G W I_G K . .','. K W W W W W K . .','. K I_G W I_G K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 
 const PLANET_TEMPLATES = {
-    earth: [
-        '. . . . . EA1 EA1 EA1 EA1 EA1 EA1 . . . . .',
-        '. . . EA1 EA1 EA2 EA2 EA1 EA1 EA3 EA3 EA1 . . .',
-        '. . EA1 EA2 EA2 EA2 EA1 EA1 EA3 EA3 EA1 EA1 . .',
-        '. EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1 EA1 EA1 .',
-        '. EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA2 EA2 EA1 EA1 .',
-        'EA1 EA1 EA1 EA1 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1',
-        'EA1 EA3 EA3 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1',
-        'EA1 EA3 EA3 EA3 EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA1 EA1',
-        'EA1 EA1 EA3 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA3 EA3 EA1',
-        'EA1 EA1 EA1 EA1 EA1 EA2 EA2 EA1 EA1 EA3 EA3 EA3 EA1',
-        'EA1 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA3 EA1 EA1',
-        '. EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1 EA1 .',
-        '. EA1 EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA1 EA1 EA1 .',
-        '. . EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 . .',
-        '. . . EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 . . . .',
-        '. . . . . EA1 EA1 EA1 EA1 EA1 EA1 . . . . .'
-    ].map(line => line.split(' ')),
-    jupiter: [
-        '. . . . . JU1 JU1 JU1 JU1 JU1 JU1 . . . . .',
-        '. . . JU1 JU1 JU1 JU2 JU2 JU2 JU1 JU1 JU1 . . .',
-        '. . JU1 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU1 . .',
-        '. JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 .',
-        '. JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU2 JU2 JU2 JU2 .',
-        'JU1 JU1 JU1 JU1 JU1 JU3 JU3 JU3 JU3 JU1 JU1 JU1 JU1',
-        'JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU3 JU3 JU2 JU2 JU2 JU2',
-        'JU2 JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU2 JU2 JU2 JU2 JU2',
-        'JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1',
-        'JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2',
-        'JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1',
-        '. JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 .',
-        '. JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 .',
-        '. . JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 . .',
-        '. . . JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 . . . .',
-        '. . . . . JU1 JU1 JU1 JU1 JU1 JU1 . . . . .'
-    ].map(line => line.split(' ')),
-    saturn: [
-        '. . . . . . . . RI1 RI1 . . . . . . . .',
-        '. . . . . SA1 SA1 SA1 SA1 SA1 SA1 . . . . . . .',
-        '. . . . SA1 SA1 SA1 SA1 SA2 SA2 SA1 SA1 . . . .',
-        '. RI1 RI1 SA1 SA1 SA1 SA2 SA2 SA2 SA2 SA1 RI1 RI1 .',
-        'RI1 RI1 RI1 RI1 SA2 SA2 SA2 SA2 SA2 SA2 RI1 RI1 RI1 RI1',
-        'RI1 . . RI1 SA1 SA1 SA1 SA1 SA1 SA1 RI1 . . RI1',
-        'RI1 . . . RI1 SA1 SA1 SA1 SA1 SA1 RI1 . . . RI1',
-        '. RI1 RI1 . RI1 SA2 SA2 SA2 SA2 RI1 . RI1 RI1 .',
-        '. . . RI1 RI1 RI1 SA2 SA2 SA2 RI1 RI1 RI1 . . .',
-        '. . . . . RI1 RI1 SA1 SA1 RI1 RI1 . . . . . .',
-        '. . . . . . SA1 SA1 SA1 SA1 . . . . . . . .',
-        '. . . . . . . SA1 SA1 . . . . . . . . .',
-        '. . . . . . . . . . . . . . . . . . . .',
-        '. . . . . . . . . . . . . . . . . . . .',
-        '. . . . . . . . . . . . . . . . . . . .',
-        '. . . . . . . . . . . . . . . . . . . .'
-    ].map(line => line.split(' '))
+    earth: ['. . . . . EA1 EA1 EA1 EA1 EA1 EA1 . . . . .','. . . EA1 EA1 EA2 EA2 EA1 EA1 EA3 EA3 EA1 . . .','. . EA1 EA2 EA2 EA2 EA1 EA1 EA3 EA3 EA1 EA1 . .','. EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1 EA1 EA1 .','. EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA2 EA2 EA1 EA1 .','EA1 EA1 EA1 EA1 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1','EA1 EA3 EA3 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1','EA1 EA3 EA3 EA3 EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA1 EA1','EA1 EA1 EA3 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA3 EA3 EA1','EA1 EA1 EA1 EA1 EA1 EA2 EA2 EA1 EA1 EA3 EA3 EA3 EA1','EA1 EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA3 EA1 EA1','. EA1 EA1 EA2 EA2 EA2 EA2 EA1 EA1 EA1 EA1 EA1 .','. EA1 EA1 EA1 EA2 EA2 EA1 EA1 EA1 EA1 EA1 EA1 .','. . EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 . .','. . . EA1 EA1 EA1 EA1 EA1 EA1 EA1 EA1 . . . .','. . . . . EA1 EA1 EA1 EA1 EA1 EA1 . . . . .'].map(line => line.split(' ')),
+    jupiter: ['. . . . . JU1 JU1 JU1 JU1 JU1 JU1 . . . . .','. . . JU1 JU1 JU1 JU2 JU2 JU2 JU1 JU1 JU1 . . .','. . JU1 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU1 . .','. JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 .','. JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU2 JU2 JU2 JU2 .','JU1 JU1 JU1 JU1 JU1 JU3 JU3 JU3 JU3 JU1 JU1 JU1 JU1','JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU3 JU3 JU2 JU2 JU2 JU2','JU2 JU2 JU2 JU2 JU2 JU2 JU3 JU3 JU2 JU2 JU2 JU2 JU2','JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1','JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2','JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1','. JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 .','. JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 .','. . JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 JU2 . .','. . . JU1 JU1 JU1 JU1 JU1 JU1 JU1 JU1 . . . .','. . . . . JU1 JU1 JU1 JU1 JU1 JU1 . . . . .'].map(line => line.split(' ')),
+    saturn: ['. . . . . . . . RI1 RI1 . . . . . . . .','. . . . . SA1 SA1 SA1 SA1 SA1 SA1 . . . . . . .','. . . . SA1 SA1 SA1 SA1 SA2 SA2 SA1 SA1 . . . .','. RI1 RI1 SA1 SA1 SA1 SA2 SA2 SA2 SA2 SA1 RI1 RI1 .','RI1 RI1 RI1 RI1 SA2 SA2 SA2 SA2 SA2 SA2 RI1 RI1 RI1 RI1','RI1 . . RI1 SA1 SA1 SA1 SA1 SA1 SA1 RI1 . . RI1','RI1 . . . RI1 SA1 SA1 SA1 SA1 SA1 RI1 . . . RI1','. RI1 RI1 . RI1 SA2 SA2 SA2 SA2 RI1 . RI1 RI1 .','. . . RI1 RI1 RI1 SA2 SA2 SA2 RI1 RI1 RI1 . . .','. . . . . RI1 RI1 SA1 SA1 RI1 RI1 . . . . . .','. . . . . . SA1 SA1 SA1 SA1 . . . . . . . .','. . . . . . . SA1 SA1 . . . . . . . . .','. . . . . . . . . . . . . . . . . . . .','. . . . . . . . . . . . . . . . . . . .','. . . . . . . . . . . . . . . . . . . .','. . . . . . . . . . . . . . . . . . . .'].map(line => line.split(' '))
 };
 
-let bullets = [];
-let enemyBullets = []; 
-let enemies = [];
-let items = [];
-let lastShotTime = 0;
-const shotInterval = 150; 
+let bullets = []; let enemyBullets = []; let enemies = []; let items = []; let planets = [];
+let lastShotTime = 0; const shotInterval = 150; 
 
 function draw16Sprite(sprite, x, y, scale = 1) {
     const size = (DOT_SIZE / 2) * scale;
     for (let r = 0; r < 16; r++) {
         for (let c = 0; c < 16; c++) {
-            const colorKey = sprite[r][c];
-            const color = COLOR_MAP[colorKey];
+            if (y + r * size > GAME_HEIGHT) continue; 
+            const colorKey = sprite[r][c]; const color = COLOR_MAP[colorKey];
             if (color) { ctx.fillStyle = color; ctx.fillRect(x + c * size, y + r * size, size, size); }
         }
     }
 }
 
-// サービスワーカー（PWA要件用ダミー）
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('data:text/javascript,console.log("PWA Active");');
-}
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('data:text/javascript,console.log("PWA Active");'); }
 
 function drawSprite(sprite, x, y, scale = 1) {
     const size = DOT_SIZE * scale;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            const colorKey = sprite[r][c];
-            const color = COLOR_MAP[colorKey];
+            const colorKey = sprite[r][c]; const color = COLOR_MAP[colorKey];
             if (color) { ctx.fillStyle = color; ctx.fillRect(x + c * size, y + r * size, size, size); }
         }
     }
 }
 
-function checkButtons(e, isPressed) {
-    if (!isStarted) { isStarted = true; spawnLoop(); spawnPlanetLoop(); return; }
-    if (gameOver) { resetGame(); return; }
+function handleTouch(e, isPressed) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
+
+    if (!isStarted) {
+        if (!isPressed) return;
+        const touch = e.changedTouches[0];
+        const tx = (touch.clientX - rect.left) * scaleX;
+        const ty = (touch.clientY - rect.top) * scaleY;
+
+        if (tx >= optBtn1Hand.x && tx <= optBtn1Hand.x + optBtn1Hand.width && ty >= optBtn1Hand.y && ty <= optBtn1Hand.y + optBtn1Hand.height) {
+            controlMode = '1hand'; updateButtonLayout(); return;
+        }
+        if (tx >= optBtn2Hand.x && tx <= optBtn2Hand.x + optBtn2Hand.width && ty >= optBtn2Hand.y && ty <= optBtn2Hand.y + optBtn2Hand.height) {
+            controlMode = '2hand'; updateButtonLayout(); return;
+        }
+        if (tx >= startTriggerBtn.x && tx <= startTriggerBtn.x + startTriggerBtn.width && ty >= startTriggerBtn.y && ty <= startTriggerBtn.y + startTriggerBtn.height) {
+            isStarted = true; spawnLoop(); spawnPlanetLoop(); return;
+        }
+        return;
+    }
+
+    if (gameOver) { if (isPressed) resetGame(); return; }
 
     btnLeft.isPressed = false; btnRight.isPressed = false;
-
     for (let i = 0; i < e.touches.length; i++) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
         const tx = (e.touches[i].clientX - rect.left) * scaleX;
         const ty = (e.touches[i].clientY - rect.top) * scaleY;
 
@@ -245,9 +205,9 @@ function checkButtons(e, isPressed) {
     }
 }
 
-window.addEventListener("touchstart", (e) => { checkButtons(e, true); });
-window.addEventListener("touchmove", (e) => { e.preventDefault(); checkButtons(e, true); }, { passive: false });
-window.addEventListener("touchend", (e) => { if (e.touches.length === 0) { btnLeft.isPressed = false; btnRight.isPressed = false; } else { checkButtons(e, true); } });
+window.addEventListener("touchstart", (e) => { handleTouch(e, true); });
+window.addEventListener("touchmove", (e) => { e.preventDefault(); handleTouch(e, true); }, { passive: false });
+window.addEventListener("touchend", (e) => { if (e.touches.length === 0) { btnLeft.isPressed = false; btnRight.isPressed = false; } else { handleTouch(e, true); } });
 
 function spawnLoop() {
     if (gameOver || !isStarted) return;
@@ -292,20 +252,48 @@ function checkCollision(rect1, rect2) { return rect1.x < rect2.x + rect2.width &
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height); const currentTime = Date.now();
+    
+    ctx.fillStyle = "#02020a";
+    ctx.fillRect(0, 0, canvas.width, GAME_HEIGHT);
+
     ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-    for (let i = 0; i < stars.length; i++) { let s = stars[i]; s.y += s.speed; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } ctx.fillRect(s.x, s.y, s.size, s.size); }
-    for (let i = planets.length - 1; i >= 0; i--) { let p = planets[i]; p.y += p.speed; if (p.y > canvas.height + 200) { planets.splice(i, 1); continue; } draw16Sprite(p.sprite, p.x, p.y, p.scale); }
+    for (let i = 0; i < stars.length; i++) { 
+        let s = stars[i]; s.y += s.speed; 
+        if (s.y > GAME_HEIGHT) { s.y = 0; s.x = Math.random() * canvas.width; } 
+        ctx.fillRect(s.x, s.y, s.size, s.size); 
+    }
+    for (let i = planets.length - 1; i >= 0; i--) { let p = planets[i]; p.y += p.speed; if (p.y > GAME_HEIGHT + 200) { planets.splice(i, 1); continue; } draw16Sprite(p.sprite, p.x, p.y, p.scale); }
 
     if (!isStarted) {
-        ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center"; ctx.fillText("CYBER SHOOTER PWA", canvas.width / 2, canvas.height / 2 - 30);
-        ctx.fillStyle = "#00ffcc"; ctx.font = "18px sans-serif"; ctx.fillText("画面をタッチしてスタート", canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center"; ctx.fillText("CYBER SHOOTER GALAXY", canvas.width / 2, 140);
+        
+        ctx.fillStyle = "rgba(0, 255, 200, 0.15)"; ctx.strokeStyle = "#00ffcc"; ctx.lineWidth = 2;
+        ctx.fillRect(startTriggerBtn.x, startTriggerBtn.y, startTriggerBtn.width, startTriggerBtn.height);
+        ctx.strokeRect(startTriggerBtn.x, startTriggerBtn.y, startTriggerBtn.width, startTriggerBtn.height);
+        ctx.fillStyle = "#00ffcc"; ctx.font = "bold 20px sans-serif"; ctx.fillText("GAME START", canvas.width / 2, 277);
+
+        ctx.fillStyle = "#888"; ctx.font = "14px sans-serif"; ctx.fillText("--- CONTROL OPTION ---", canvas.width / 2, 320);
+
+        ctx.fillStyle = controlMode === '1hand' ? "rgba(0, 255, 200, 0.3)" : "rgba(255, 255, 255, 0.05)";
+        ctx.strokeStyle = controlMode === '1hand' ? "#00ffcc" : "#555";
+        ctx.fillRect(optBtn1Hand.x, optBtn1Hand.y, optBtn1Hand.width, optBtn1Hand.height); ctx.strokeRect(optBtn1Hand.x, optBtn1Hand.y, optBtn1Hand.width, optBtn1Hand.height);
+        ctx.fillStyle = controlMode === '1hand' ? "#fff" : "#888"; ctx.font = "bold 14px sans-serif"; ctx.fillText("1-HAND (左下)", optBtn1Hand.x + 65, optBtn1Hand.y + 25);
+
+        ctx.fillStyle = controlMode === '2hand' ? "rgba(0, 255, 200, 0.3)" : "rgba(255, 255, 255, 0.05)";
+        ctx.strokeStyle = controlMode === '2hand' ? "#00ffcc" : "#555";
+        ctx.fillRect(optBtn2Hand.x, optBtn2Hand.y, optBtn2Hand.width, optBtn2Hand.height); ctx.strokeRect(optBtn2Hand.x, optBtn2Hand.y, optBtn2Hand.width, optBtn2Hand.height);
+        ctx.fillStyle = controlMode === '2hand' ? "#fff" : "#888"; ctx.fillText("2-HAND (左右)", optBtn2Hand.x + 65, optBtn2Hand.y + 25);
+
+        drawControlPanel();
         requestAnimationFrame(gameLoop); return;
     }
+
     if (gameOver) {
-        ctx.fillStyle = "rgba(5, 5, 15, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
-        ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif"; ctx.fillText(`SCORE: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
-        ctx.fillStyle = "#00ffcc"; ctx.fillText("タッチしてリトライ", canvas.width / 2, canvas.height / 2 + 70);
+        ctx.fillStyle = "rgba(5, 5, 15, 0.85)"; ctx.fillRect(0, 0, canvas.width, GAME_HEIGHT);
+        ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", canvas.width / 2, GAME_HEIGHT / 2 - 20);
+        ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif"; ctx.fillText(`SCORE: ${score}`, canvas.width / 2, GAME_HEIGHT / 2 + 20);
+        ctx.fillStyle = "#00ffcc"; ctx.fillText("タッチしてリトライ", canvas.width / 2, GAME_HEIGHT / 2 + 70);
+        drawControlPanel();
         requestAnimationFrame(gameLoop); return;
     }
 
@@ -325,11 +313,6 @@ function gameLoop() {
 
     if (!player.isInvincible || Math.floor(currentTime / 70) % 2 === 0) { drawSprite(PLAYER_SPRITE, player.x, player.y); }
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.22)"; if (btnLeft.isPressed) ctx.fillStyle = "rgba(0, 255, 200, 0.4)"; ctx.fillRect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.22)"; if (btnRight.isPressed) ctx.fillStyle = "rgba(0, 255, 200, 0.4)"; ctx.fillRect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.6)"; ctx.font = "bold 24px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("◀", btnLeft.x + btnLeft.width / 2, btnLeft.y + btnLeft.height / 2 + 8); ctx.fillText("▶", btnRight.x + btnRight.width / 2, btnRight.y + btnRight.height / 2 + 8);
-
     for (let i = bullets.length - 1; i >= 0; i--) {
         let b = bullets[i]; b.y -= b.speedY; b.x += b.speedX; if (b.y < -b.height || b.x < -20 || b.x > canvas.width + 20) { bullets.splice(i, 1); continue; }
         if (b.isBomb) { ctx.fillStyle = COLOR_MAP['B_O']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 8, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = COLOR_MAP['B_Y']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 4, 0, Math.PI * 2); ctx.fill(); } 
@@ -337,7 +320,7 @@ function gameLoop() {
     }
 
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
-        let eb = enemyBullets[i]; eb.y += eb.speedY; eb.x += (eb.speedX || 0); if (eb.y > canvas.height || eb.x < -10 || eb.x > canvas.width + 10) { enemyBullets.splice(i, 1); continue; }
+        let eb = enemyBullets[i]; eb.y += eb.speedY; eb.x += (eb.speedX || 0); if (eb.y > GAME_HEIGHT || eb.x < -10 || eb.x > canvas.width + 10) { enemyBullets.splice(i, 1); continue; }
         ctx.fillStyle = COLOR_MAP['E_B']; ctx.beginPath(); ctx.arc(eb.x + 4, eb.y + 4, 5, 0, Math.PI * 2); ctx.fill();
         if (!player.isInvincible && checkCollision(player, eb)) {
             enemyBullets.splice(i, 1); player.lives--; if (player.powerFront > 1) player.powerFront--; if (player.powerSlash > 0) player.powerSlash--;
@@ -346,7 +329,7 @@ function gameLoop() {
     }
 
     for (let i = items.length - 1; i >= 0; i--) {
-        let it = items[i]; it.y += it.speed; if (it.y > canvas.height) { items.splice(i, 1); continue; }
+        let it = items[i]; it.y += it.speed; if (it.y > GAME_HEIGHT) { items.splice(i, 1); continue; }
         if (it.itemType === 'front') drawSprite(ITEM_SPRITE_RED, it.x, it.y, 0.8); else if (it.itemType === 'slash') drawSprite(ITEM_SPRITE_BLUE, it.x, it.y, 0.8); else drawSprite(ITEM_SPRITE_GREEN, it.x, it.y, 0.8);
         if (checkCollision(player, it)) { items.splice(i, 1); if (it.itemType === 'front' && player.powerFront < 3) player.powerFront++; else if (it.itemType === 'slash' && player.powerSlash < 2) player.powerSlash++; else if (it.itemType === 'heal' && player.lives < player.maxLives) player.lives++; score += 200; continue; }
     }
@@ -364,7 +347,7 @@ function gameLoop() {
             drawSprite(ENEMY_HEAVY, e.x, e.y, 1.5); ctx.fillStyle = '#555'; ctx.fillRect(e.x, e.y - 8, e.width, 4); ctx.fillStyle = '#00ff66'; ctx.fillRect(e.x, e.y - 8, e.width * (e.hp / e.maxHp), 4);
             if (currentTime - e.lastShot > 1800) { const angleStep = Math.PI / 4; const cx = e.x + e.width / 2; const cy = e.y + e.height / 2; for (let a = 0; a < 8; a++) { const angle = a * angleStep; enemyBullets.push({ x: cx - 4, y: cy - 4, width: 8, height: 8, speedY: Math.sin(angle) * 3.5, speedX: Math.cos(angle) * 3.5 }); } e.lastShot = currentTime; }
         }
-        if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
+        if (e.y > GAME_HEIGHT) { enemies.splice(i, 1); continue; }
         if (!player.isInvincible && checkCollision(player, e)) { enemies.splice(i, 1); player.lives--; if (player.powerFront > 1) player.powerFront--; if (player.powerSlash > 0) player.powerSlash--; if (player.lives <= 0) gameOver = true; else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; } continue; }
         for (let j = bullets.length - 1; j >= 0; j--) { let b = bullets[j]; if (checkCollision(b, e)) { bullets.splice(j, 1); e.hp--; if (e.hp <= 0) { spawnItem(e.x + e.width/2 - 15, e.y + e.height/2 - 15); enemies.splice(i, 1); score += e.type === 'heavy' ? 400 : 100; } break; } }
     }
@@ -372,8 +355,34 @@ function gameLoop() {
     ctx.fillStyle = "#fff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "right"; ctx.fillText(`SCORE: ${score}`, canvas.width - 15, 30);
     ctx.fillStyle = "#ff4444"; ctx.fillText(`F-POWER: ${player.powerFront}/3`, canvas.width - 15, 52); ctx.fillStyle = "#3399ff"; ctx.fillText(`S-POWER: ${player.powerSlash}/2`, canvas.width - 15, 74);
     ctx.textAlign = "left"; ctx.font = "22px sans-serif"; let heartStr = ""; for (let i = 0; i < player.lives; i++) heartStr += "❤️"; ctx.fillText(heartStr, 15, 30);
+
+    drawControlPanel();
+
     requestAnimationFrame(gameLoop);
 }
+
+function drawControlPanel() {
+    ctx.fillStyle = "#151522";
+    ctx.fillRect(0, UI_TOP, canvas.width, UI_HEIGHT);
+    ctx.strokeStyle = "#3a3a78"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, UI_TOP); ctx.lineTo(canvas.width, UI_TOP); ctx.stroke();
+
+    ctx.fillStyle = btnLeft.isPressed ? "rgba(0, 255, 200, 0.5)" : "rgba(255, 255, 255, 0.12)";
+    ctx.strokeStyle = btnLeft.isPressed ? "#00ffcc" : "#444466";
+    ctx.fillRect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
+    ctx.strokeRect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
+
+    ctx.fillStyle = btnRight.isPressed ? "rgba(0, 255, 200, 0.5)" : "rgba(255, 255, 255, 0.12)";
+    ctx.strokeStyle = btnRight.isPressed ? "#00ffcc" : "#444466";
+    ctx.fillRect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
+    ctx.strokeRect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.font = "bold 28px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("◀", btnLeft.x + btnLeft.width / 2, btnLeft.y + btnLeft.height / 2 + 10);
+    ctx.fillText("▶", btnRight.x + btnRight.width / 2, btnRight.y + btnRight.height / 2 + 10);
+}
+
 gameLoop();
 </script>
 </body>
