@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Space Shooter - Solar System AI Edition</title>
+    <title>Space Shooter - App Mode Edition</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://dummyimage.com/192x192/00ffcc/02020a.png&text=CS">
+
     <style>
         html, body {
             position: fixed;
@@ -61,8 +67,13 @@ const player = {
     invincibleTimer: 0,
     invincibleDuration: 1000,
     powerFront: 1, 
-    powerSlash: 0  
+    powerSlash: 0,
+    speed: 5.5 
 };
+
+// 🕹️ 仮想ボタンの配置データ
+const btnLeft = { x: 30, y: 500, width: 60, height: 60, isPressed: false };
+const btnRight = { x: 110, y: 500, width: 60, height: 60, isPressed: false };
 
 // 背景用データ
 const stars = [];
@@ -85,18 +96,17 @@ const COLOR_MAP = {
     'Y': '#e6b800', 'O': '#ff6600',                 
     'G': '#00cc44', 'D': '#006622',                 
     'L': '#00ff66',                                 
-    'I_R': '#ff3333', 'I_B': '#3399ff', 'I_G': '#00ff66', // I_G = 回復用の緑            
+    'I_R': '#ff3333', 'I_B': '#3399ff', 'I_G': '#00ff66',            
     'E_B': '#ff3333', 'B_O': '#ff9900', 'B_Y': '#ffff00',
     
-    // 🪐 太陽系惑星用の微細カラーパレット
-    'ME1': '#8a8a93', 'ME2': '#5a5a61', // 水星（グレー）
-    'VE1': '#e39b5d', 'VE2': '#bf6a2a', // 金星（砂漠・オレンジ）
-    'EA1': '#2b82c9', 'EA2': '#4caf50', 'EA3': '#ffffff', // 地球（青・緑・白雲）
-    'MA1': '#c1440e', 'MA2': '#e77d11', // 火星（赤錆び）
-    'JU1': '#b07f35', 'JU2': '#e3ba8f', 'JU3': '#851c1c', // 木星（縞模様と大赤斑）
-    'SA1': '#e2bf7d', 'SA2': '#b08f54', 'RI1': '#d4b373', // 土星（ベージュと輪）
-    'UR1': '#4b70dd', 'UR2': '#7ca1f7', // 天王星（淡い青）
-    'NE1': '#274687', 'NE2': '#1b305e'  // 海王星（深い濃紺）
+    'ME1': '#8a8a93', 'ME2': '#5a5a61', 
+    'VE1': '#e39b5d', 'VE2': '#bf6a2a', 
+    'EA1': '#2b82c9', 'EA2': '#4caf50', 'EA3': '#ffffff', 
+    'MA1': '#c1440e', 'MA2': '#e77d11', 
+    'JU1': '#b07f35', 'JU2': '#e3ba8f', 'JU3': '#851c1c', 
+    'SA1': '#e2bf7d', 'SA2': '#b08f54', 'RI1': '#d4b373', 
+    'UR1': '#4b70dd', 'UR2': '#7ca1f7', 
+    'NE1': '#274687', 'NE2': '#1b305e'  
 };
 
 const PLAYER_SPRITE = [
@@ -119,12 +129,10 @@ const ENEMY_HEAVY = [
     'D G G G G G G D', '. D G G G G D .', '. D K D D K D .', 'D . . . . . . D'
 ].map(line => line.split(' '));
 
-// アイテム（赤：前方、青：斜めボム、緑：❤️回復）
 const ITEM_SPRITE_RED = ['. . K K K . . .','. . K I_R K . . .','. K K K K K . .','. K I_R I_R I_R K . .','. K I_R W I_R K . .','. K I_R I_R I_R K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 const ITEM_SPRITE_BLUE = ['. . K K K . . .','. . K I_B K . . .','. K K K K K . .','. K I_B I_B I_B K . .','. K I_B W I_B K . .','. K I_B I_B I_B K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 const ITEM_SPRITE_GREEN = ['. . K K K . . .','. . K I_G K . . .','. K K K K K . .','. K I_G W I_G K . .','. K W W W W W K . .','. K I_G W I_G K . .','. K K K K K . .','. . . . . . . .'].map(line => line.split(' '));
 
-// 🪐 16x16 高精細な太陽系惑星データ
 const PLANET_TEMPLATES = {
     earth: [
         '. . . . . EA1 EA1 EA1 EA1 EA1 EA1 . . . . .',
@@ -189,19 +197,20 @@ let items = [];
 let lastShotTime = 0;
 const shotInterval = 150; 
 
-// 16x16 描画用の関数を追加
 function draw16Sprite(sprite, x, y, scale = 1) {
-    const size = (DOT_SIZE / 2) * scale; // 16マスのためドットサイズを半分に調整
+    const size = (DOT_SIZE / 2) * scale;
     for (let r = 0; r < 16; r++) {
         for (let c = 0; c < 16; c++) {
             const colorKey = sprite[r][c];
             const color = COLOR_MAP[colorKey];
-            if (color) {
-                ctx.fillStyle = color;
-                ctx.fillRect(x + c * size, y + r * size, size, size);
-            }
+            if (color) { ctx.fillStyle = color; ctx.fillRect(x + c * size, y + r * size, size, size); }
         }
     }
+}
+
+// サービスワーカー（PWA要件用ダミー）
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('data:text/javascript,console.log("PWA Active");');
 }
 
 function drawSprite(sprite, x, y, scale = 1) {
@@ -210,315 +219,161 @@ function drawSprite(sprite, x, y, scale = 1) {
         for (let c = 0; c < 8; c++) {
             const colorKey = sprite[r][c];
             const color = COLOR_MAP[colorKey];
-            if (color) {
-                ctx.fillStyle = color;
-                ctx.fillRect(x + c * size, y + r * size, size, size);
-            }
+            if (color) { ctx.fillStyle = color; ctx.fillRect(x + c * size, y + r * size, size, size); }
         }
     }
 }
 
-// ポインター操作
-function handlePointerMove(e) {
-    if (!isStarted || gameOver) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    player.x = (e.clientX - rect.left) * scaleX - player.width / 2;
-    if (player.x < 0) player.x = 0;
-    if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
-}
-window.addEventListener("pointerdown", () => {
-    if (!isStarted) { isStarted = true; spawnLoop(); spawnPlanetLoop(); }
-    else if (gameOver) { resetGame(); }
-});
-window.addEventListener("pointermove", handlePointerMove);
-window.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+function checkButtons(e, isPressed) {
+    if (!isStarted) { isStarted = true; spawnLoop(); spawnPlanetLoop(); return; }
+    if (gameOver) { resetGame(); return; }
 
+    btnLeft.isPressed = false; btnRight.isPressed = false;
+
+    for (let i = 0; i < e.touches.length; i++) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
+        const tx = (e.touches[i].clientX - rect.left) * scaleX;
+        const ty = (e.touches[i].clientY - rect.top) * scaleY;
+
+        if (tx >= btnLeft.x && tx <= btnLeft.x + btnLeft.width && ty >= btnLeft.y && ty <= btnLeft.y + btnLeft.height) {
+            btnLeft.isPressed = isPressed;
+        }
+        if (tx >= btnRight.x && tx <= btnRight.x + btnRight.width && ty >= btnRight.y && ty <= btnRight.y + btnRight.height) {
+            btnRight.isPressed = isPressed;
+        }
+    }
+}
+
+window.addEventListener("touchstart", (e) => { checkButtons(e, true); });
+window.addEventListener("touchmove", (e) => { e.preventDefault(); checkButtons(e, true); }, { passive: false });
+window.addEventListener("touchend", (e) => { if (e.touches.length === 0) { btnLeft.isPressed = false; btnRight.isPressed = false; } else { checkButtons(e, true); } });
 
 function spawnLoop() {
     if (gameOver || !isStarted) return;
-    
     const rand = Math.random();
-    let type = 'normal';
-    let width = 40, height = 40, hp = 1, speed = Math.random() * 1.5 + 1.5;
-
-    if (rand > 0.75) { 
-        type = 'shooter';
-        speed = Math.random() * 1.0 + 1.2; 
-    } else if (rand > 0.55) { 
-        type = 'heavy';   
-        width = 60; height = 60; 
-        hp = 10; 
-        speed = 0.8; 
-    }
-
+    let type = 'normal'; let width = 40, height = 40, hp = 1, speed = Math.random() * 1.5 + 1.5;
+    if (rand > 0.75) { type = 'shooter'; speed = Math.random() * 1.0 + 1.2; } 
+    else if (rand > 0.55) { type = 'heavy'; width = 60; height = 60; hp = 10; speed = 0.8; }
     const x = Math.random() * (canvas.width - width);
     enemies.push({ x, y: -height, width, height, speed, type, hp, maxHp: hp, lastShot: Date.now() });
-
-    const nextSpawn = Math.max(300, 1000 - score * 6);
-    setTimeout(spawnLoop, nextSpawn);
+    const nextSpawn = Math.max(300, 1000 - score * 6); setTimeout(spawnLoop, nextSpawn);
 }
 
 function spawnPlanetLoop() {
     if (gameOver || !isStarted) return;
-    
-    const scale = Math.random() * 2 + 3; // 16x16ベースなので少し調整
-    const size = (DOT_SIZE / 2) * 16 * scale;
-    const x = Math.random() * (canvas.width - size / 2) - size / 4;
-    const speed = Math.random() * 0.2 + 0.2;
-
-    // ランダムに太陽系の惑星タイプを選択
-    const types = ['earth', 'jupiter', 'saturn'];
-    const pType = types[Math.floor(Math.random() * types.length)];
-
+    const scale = Math.random() * 2 + 3; const size = (DOT_SIZE / 2) * 16 * scale;
+    const x = Math.random() * (canvas.width - size / 2) - size / 4; const speed = Math.random() * 0.2 + 0.2;
+    const types = ['earth', 'jupiter', 'saturn']; const pType = types[Math.floor(Math.random() * types.length)];
     planets.push({ x, y: -size, scale, speed, sprite: PLANET_TEMPLATES[pType] });
-
     setTimeout(spawnPlanetLoop, Math.random() * 6000 + 10000);
 }
 
-// 💥 アイテムドロップ率の調整（回復アイテムを3分の1で追加）
 function spawnItem(x, y) {
     const rand = Math.random();
-    
-    if (rand < 0.30) { // 約30%の確率で何かがドロップ
-        const itemRand = Math.random();
-        let itemType = 'front';
-
-        if (itemRand < 0.12) { 
-            // 💚 回復アイテム（攻撃アイテムの約3分の1の確率）
-            itemType = 'heal';
-        } else {
-            // 🛠 攻撃強化アイテム
-            if (player.powerFront >= 3 && player.powerSlash >= 2) return; // 攻撃カンストなら出さない
-            if (player.powerFront >= 3) itemType = 'slash';
-            else if (player.powerSlash >= 2) itemType = 'front';
-            else itemType = Math.random() < 0.5 ? 'front' : 'slash';
+    if (rand < 0.30) {
+        const itemRand = Math.random(); let itemType = 'front';
+        if (itemRand < 0.12) { itemType = 'heal'; } 
+        else {
+            if (player.powerFront >= 3 && player.powerSlash >= 2) return;
+            if (player.powerFront >= 3) itemType = 'slash'; else if (player.powerSlash >= 2) itemType = 'front'; else itemType = Math.random() < 0.5 ? 'front' : 'slash';
         }
-
         items.push({ x, y, width: 35, height: 35, speed: 2, itemType });
     }
 }
 
 function resetGame() {
-    bullets = []; enemyBullets = []; enemies = []; items = []; planets = [];
-    score = 0; player.x = 180; player.lives = player.maxLives;
-    player.powerFront = 1; player.powerSlash = 0;
-    player.isInvincible = false; gameOver = false;
-    spawnLoop();
-    spawnPlanetLoop();
+    bullets = []; enemyBullets = []; enemies = []; items = []; planets = []; score = 0; player.x = 180; player.lives = player.maxLives;
+    player.powerFront = 1; player.powerSlash = 0; player.isInvincible = false; gameOver = false; btnLeft.isPressed = false; btnRight.isPressed = false;
+    spawnLoop(); spawnPlanetLoop();
 }
 
-function checkCollision(rect1, rect2) {
-    return rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x &&
-           rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y;
-}
+function checkCollision(rect1, rect2) { return rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x && rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y; }
 
 function gameLoop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const currentTime = Date.now();
-
-    // 1. 星屑
+    ctx.clearRect(0, 0, canvas.width, canvas.height); const currentTime = Date.now();
     ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-    for (let i = 0; i < stars.length; i++) {
-        let s = stars[i]; s.y += s.speed;
-        if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
-        ctx.fillRect(s.x, s.y, s.size, s.size);
-    }
-
-    // 2. 🪐 精細化した惑星
-    for (let i = planets.length - 1; i >= 0; i--) {
-        let p = planets[i]; p.y += p.speed;
-        if (p.y > canvas.height + 200) { planets.splice(i, 1); continue; }
-        draw16Sprite(p.sprite, p.x, p.y, p.scale);
-    }
+    for (let i = 0; i < stars.length; i++) { let s = stars[i]; s.y += s.speed; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } ctx.fillRect(s.x, s.y, s.size, s.size); }
+    for (let i = planets.length - 1; i >= 0; i--) { let p = planets[i]; p.y += p.speed; if (p.y > canvas.height + 200) { planets.splice(i, 1); continue; } draw16Sprite(p.sprite, p.x, p.y, p.scale); }
 
     if (!isStarted) {
-        ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText("CYBER SHOOTER GALAXY", canvas.width / 2, canvas.height / 2 - 30);
-        ctx.fillStyle = "#00ffcc"; ctx.font = "18px sans-serif";
-        ctx.fillText("画面をタップしてスタート", canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center"; ctx.fillText("CYBER SHOOTER PWA", canvas.width / 2, canvas.height / 2 - 30);
+        ctx.fillStyle = "#00ffcc"; ctx.font = "18px sans-serif"; ctx.fillText("画面をタッチしてスタート", canvas.width / 2, canvas.height / 2 + 20);
         requestAnimationFrame(gameLoop); return;
     }
-
     if (gameOver) {
         ctx.fillStyle = "rgba(5, 5, 15, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
-        ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif";
-        ctx.fillText(`SCORE: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
-        ctx.fillStyle = "#00ffcc"; ctx.fillText("タップしてリトライ", canvas.width / 2, canvas.height / 2 + 70);
+        ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif"; ctx.fillText(`SCORE: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillStyle = "#00ffcc"; ctx.fillText("タッチしてリトライ", canvas.width / 2, canvas.height / 2 + 70);
         requestAnimationFrame(gameLoop); return;
     }
 
+    if (btnLeft.isPressed) { player.x -= player.speed; if (player.x < 0) player.x = 0; }
+    if (btnRight.isPressed) { player.x += player.speed; if (player.x > canvas.width - player.width) player.x = canvas.width - player.width; }
     if (player.isInvincible && currentTime > player.invincibleTimer) player.isInvincible = false;
 
-    // 自機ショット生成
     if (currentTime - lastShotTime > shotInterval) {
         const midX = player.x + player.width / 2;
-
-        if (player.powerFront === 1) {
-            bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-        } else if (player.powerFront === 2) {
-            bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-            bullets.push({ x: player.x + player.width - 6, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-        } else if (player.powerFront >= 3) {
-            bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-            bullets.push({ x: player.x - 5, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-            bullets.push({ x: player.x + player.width - 1, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
-        }
-
-        if (player.powerSlash === 1) {
-            bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true });
-            bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true });
-        } else if (player.powerSlash >= 2) {
-            bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true });
-            bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true });
-            bullets.push({ x: player.x - 12, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: -4, isBomb: true });
-            bullets.push({ x: player.x + player.width + 2, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: 4, isBomb: true });
-        }
+        if (player.powerFront === 1) { bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); } 
+        else if (player.powerFront === 2) { bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); bullets.push({ x: player.x + player.width - 6, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); } 
+        else if (player.powerFront >= 3) { bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); bullets.push({ x: player.x - 5, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); bullets.push({ x: player.x + player.width - 1, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false }); }
+        if (player.powerSlash === 1) { bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true }); bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true }); } 
+        else if (player.powerSlash >= 2) { bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true }); bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true }); bullets.push({ x: player.x - 12, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: -4, isBomb: true }); bullets.push({ x: player.x + player.width + 2, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: 4, isBomb: true }); }
         lastShotTime = currentTime;
     }
 
-    // 自機描画
-    if (!player.isInvincible || Math.floor(currentTime / 70) % 2 === 0) {
-        drawSprite(PLAYER_SPRITE, player.x, player.y);
-    }
+    if (!player.isInvincible || Math.floor(currentTime / 70) % 2 === 0) { drawSprite(PLAYER_SPRITE, player.x, player.y); }
 
-    // 自機弾の更新
+    ctx.fillStyle = "rgba(255, 255, 255, 0.22)"; if (btnLeft.isPressed) ctx.fillStyle = "rgba(0, 255, 200, 0.4)"; ctx.fillRect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.22)"; if (btnRight.isPressed) ctx.fillStyle = "rgba(0, 255, 200, 0.4)"; ctx.fillRect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)"; ctx.font = "bold 24px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("◀", btnLeft.x + btnLeft.width / 2, btnLeft.y + btnLeft.height / 2 + 8); ctx.fillText("▶", btnRight.x + btnRight.width / 2, btnRight.y + btnRight.height / 2 + 8);
+
     for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i]; b.y -= b.speedY; b.x += b.speedX;
-        if (b.y < -b.height || b.x < -20 || b.x > canvas.width + 20) { bullets.splice(i, 1); continue; }
-        
-        if (b.isBomb) {
-            ctx.fillStyle = COLOR_MAP['B_O']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 8, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = COLOR_MAP['B_Y']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 4, 0, Math.PI * 2); ctx.fill();
-        } else {
-            ctx.fillStyle = COLOR_MAP['L']; ctx.fillRect(b.x, b.y, b.width, b.height);
-            ctx.fillStyle = COLOR_MAP['W']; ctx.fillRect(b.x + 1.5, b.y + 2, b.width - 3, b.height - 4);
-        }
+        let b = bullets[i]; b.y -= b.speedY; b.x += b.speedX; if (b.y < -b.height || b.x < -20 || b.x > canvas.width + 20) { bullets.splice(i, 1); continue; }
+        if (b.isBomb) { ctx.fillStyle = COLOR_MAP['B_O']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 8, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = COLOR_MAP['B_Y']; ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 4, 0, Math.PI * 2); ctx.fill(); } 
+        else { ctx.fillStyle = COLOR_MAP['L']; ctx.fillRect(b.x, b.y, b.width, b.height); ctx.fillStyle = COLOR_MAP['W']; ctx.fillRect(b.x + 1.5, b.y + 2, b.width - 3, b.height - 4); }
     }
 
-    // 敵弾の更新
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
-        let eb = enemyBullets[i]; eb.y += eb.speedY; eb.x += (eb.speedX || 0); // 全方位対応
-        if (eb.y > canvas.height || eb.x < -10 || eb.x > canvas.width + 10) { enemyBullets.splice(i, 1); continue; }
-        
+        let eb = enemyBullets[i]; eb.y += eb.speedY; eb.x += (eb.speedX || 0); if (eb.y > canvas.height || eb.x < -10 || eb.x > canvas.width + 10) { enemyBullets.splice(i, 1); continue; }
         ctx.fillStyle = COLOR_MAP['E_B']; ctx.beginPath(); ctx.arc(eb.x + 4, eb.y + 4, 5, 0, Math.PI * 2); ctx.fill();
-
         if (!player.isInvincible && checkCollision(player, eb)) {
-            enemyBullets.splice(i, 1); player.lives--;
-            if (player.powerFront > 1) player.powerFront--;
-            if (player.powerSlash > 0) player.powerSlash--;
-            if (player.lives <= 0) gameOver = true;
-            else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; }
-            continue;
+            enemyBullets.splice(i, 1); player.lives--; if (player.powerFront > 1) player.powerFront--; if (player.powerSlash > 0) player.powerSlash--;
+            if (player.lives <= 0) gameOver = true; else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; } continue;
         }
     }
 
-    // アイテムの更新と取得
     for (let i = items.length - 1; i >= 0; i--) {
-        let it = items[i]; it.y += it.speed;
-        if (it.y > canvas.height) { items.splice(i, 1); continue; }
-
-        if (it.itemType === 'front') drawSprite(ITEM_SPRITE_RED, it.x, it.y, 0.8);
-        else if (it.itemType === 'slash') drawSprite(ITEM_SPRITE_BLUE, it.x, it.y, 0.8);
-        else drawSprite(ITEM_SPRITE_GREEN, it.x, it.y, 0.8); // 💚回復
-
-        if (checkCollision(player, it)) {
-            items.splice(i, 1);
-            if (it.itemType === 'front' && player.powerFront < 3) player.powerFront++;
-            else if (it.itemType === 'slash' && player.powerSlash < 2) player.powerSlash++;
-            else if (it.itemType === 'heal' && player.lives < player.maxLives) player.lives++; // 体力回復
-            score += 200; continue;
-        }
+        let it = items[i]; it.y += it.speed; if (it.y > canvas.height) { items.splice(i, 1); continue; }
+        if (it.itemType === 'front') drawSprite(ITEM_SPRITE_RED, it.x, it.y, 0.8); else if (it.itemType === 'slash') drawSprite(ITEM_SPRITE_BLUE, it.x, it.y, 0.8); else drawSprite(ITEM_SPRITE_GREEN, it.x, it.y, 0.8);
+        if (checkCollision(player, it)) { items.splice(i, 1); if (it.itemType === 'front' && player.powerFront < 3) player.powerFront++; else if (it.itemType === 'slash' && player.powerSlash < 2) player.powerSlash++; else if (it.itemType === 'heal' && player.lives < player.maxLives) player.lives++; score += 200; continue; }
     }
 
-    // 敵機のAI処理・更新
     for (let i = enemies.length - 1; i >= 0; i--) {
         let e = enemies[i]; e.y += e.speed;
-
-        if (e.type === 'normal') {
-            const targetX = player.x + player.width / 2 - e.width / 2;
-            if (e.x < targetX) e.x += 1.2; else if (e.x > targetX) e.x -= 1.2;
-            drawSprite(ENEMY_NORMAL, e.x, e.y);
-        } 
+        if (e.type === 'normal') { const targetX = player.x + player.width / 2 - e.width / 2; if (e.x < targetX) e.x += 1.2; else if (e.x > targetX) e.x -= 1.2; drawSprite(ENEMY_NORMAL, e.x, e.y); } 
         else if (e.type === 'shooter') {
             let danger = false; let dodgeDir = 0;
-            for (let j = 0; j < bullets.length; j++) {
-                let b = bullets[j];
-                if (Math.abs((b.x + b.width/2) - (e.x + e.width/2)) < 45 && b.y > e.y && b.y < e.y + 180) {
-                    danger = true; dodgeDir = (b.x + b.width/2) > (e.x + e.width/2) ? -2.5 : 2.5; break;
-                }
-            }
+            for (let j = 0; j < bullets.length; j++) { let b = bullets[j]; if (Math.abs((b.x + b.width/2) - (e.x + e.width/2)) < 45 && b.y > e.y && b.y < e.y + 180) { danger = true; dodgeDir = (b.x + b.width/2) > (e.x + e.width/2) ? -2.5 : 2.5; break; } }
             if (danger) { e.x += dodgeDir; if (e.x < 0) e.x = 0; if (e.x > canvas.width - e.width) e.x = canvas.width - e.width; }
-            drawSprite(ENEMY_SHOOTER, e.x, e.y);
-            
-            if (currentTime - e.lastShot > 1300) {
-                enemyBullets.push({ x: e.x + 16, y: e.y + 35, width: 8, height: 8, speedY: 5, speedX: 0 });
-                e.lastShot = currentTime;
-            }
+            drawSprite(ENEMY_SHOOTER, e.x, e.y); if (currentTime - e.lastShot > 1300) { enemyBullets.push({ x: e.x + 16, y: e.y + 35, width: 8, height: 8, speedY: 5, speedX: 0 }); e.lastShot = currentTime; }
         } 
         else if (e.type === 'heavy') {
-            drawSprite(ENEMY_HEAVY, e.x, e.y, 1.5); 
-            
-            // HPバー
-            ctx.fillStyle = '#555'; ctx.fillRect(e.x, e.y - 8, e.width, 4);
-            ctx.fillStyle = '#00ff66'; ctx.fillRect(e.x, e.y - 8, e.width * (e.hp / e.maxHp), 4);
-
-            // 🛑 【全方位攻撃】HP10の巨大敵から360度8方向への弾発射
-            if (currentTime - e.lastShot > 1800) {
-                const angleStep = Math.PI / 4; // 45度ずつ8方向
-                const cx = e.x + e.width / 2;
-                const cy = e.y + e.height / 2;
-                for (let a = 0; a < 8; a++) {
-                    const angle = a * angleStep;
-                    enemyBullets.push({
-                        x: cx - 4, y: cy - 4, width: 8, height: 8,
-                        speedY: Math.sin(angle) * 3.5,
-                        speedX: Math.cos(angle) * 3.5
-                    });
-                }
-                e.lastShot = currentTime;
-            }
+            drawSprite(ENEMY_HEAVY, e.x, e.y, 1.5); ctx.fillStyle = '#555'; ctx.fillRect(e.x, e.y - 8, e.width, 4); ctx.fillStyle = '#00ff66'; ctx.fillRect(e.x, e.y - 8, e.width * (e.hp / e.maxHp), 4);
+            if (currentTime - e.lastShot > 1800) { const angleStep = Math.PI / 4; const cx = e.x + e.width / 2; const cy = e.y + e.height / 2; for (let a = 0; a < 8; a++) { const angle = a * angleStep; enemyBullets.push({ x: cx - 4, y: cy - 4, width: 8, height: 8, speedY: Math.sin(angle) * 3.5, speedX: Math.cos(angle) * 3.5 }); } e.lastShot = currentTime; }
         }
-
         if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
-
-        if (!player.isInvincible && checkCollision(player, e)) {
-            enemies.splice(i, 1); player.lives--;
-            if (player.powerFront > 1) player.powerFront--;
-            if (player.powerSlash > 0) player.powerSlash--;
-            if (player.lives <= 0) gameOver = true;
-            else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; }
-            continue;
-        }
-
-        for (let j = bullets.length - 1; j >= 0; j--) {
-            let b = bullets[j];
-            if (checkCollision(b, e)) {
-                bullets.splice(j, 1); e.hp--; 
-                if (e.hp <= 0) {
-                    spawnItem(e.x + e.width/2 - 15, e.y + e.height/2 - 15); 
-                    enemies.splice(i, 1); score += e.type === 'heavy' ? 400 : 100; 
-                }
-                break;
-            }
-        }
+        if (!player.isInvincible && checkCollision(player, e)) { enemies.splice(i, 1); player.lives--; if (player.powerFront > 1) player.powerFront--; if (player.powerSlash > 0) player.powerSlash--; if (player.lives <= 0) gameOver = true; else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; } continue; }
+        for (let j = bullets.length - 1; j >= 0; j--) { let b = bullets[j]; if (checkCollision(b, e)) { bullets.splice(j, 1); e.hp--; if (e.hp <= 0) { spawnItem(e.x + e.width/2 - 15, e.y + e.height/2 - 15); enemies.splice(i, 1); score += e.type === 'heavy' ? 400 : 100; } break; } }
     }
 
-    // 📊 UI
-    ctx.fillStyle = "#fff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "right";
-    ctx.fillText(`SCORE: ${score}`, canvas.width - 15, 30);
-    ctx.fillStyle = "#ff4444"; ctx.fillText(`F-POWER: ${player.powerFront}/3`, canvas.width - 15, 52);
-    ctx.fillStyle = "#3399ff"; ctx.fillText(`S-POWER: ${player.powerSlash}/2`, canvas.width - 15, 74);
-
-    ctx.textAlign = "left"; ctx.font = "22px sans-serif";
-    let heartStr = ""; for (let i = 0; i < player.lives; i++) heartStr += "❤️";
-    ctx.fillText(heartStr, 15, 30);
-
+    ctx.fillStyle = "#fff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "right"; ctx.fillText(`SCORE: ${score}`, canvas.width - 15, 30);
+    ctx.fillStyle = "#ff4444"; ctx.fillText(`F-POWER: ${player.powerFront}/3`, canvas.width - 15, 52); ctx.fillStyle = "#3399ff"; ctx.fillText(`S-POWER: ${player.powerSlash}/2`, canvas.width - 15, 74);
+    ctx.textAlign = "left"; ctx.font = "22px sans-serif"; let heartStr = ""; for (let i = 0; i < player.lives; i++) heartStr += "❤️"; ctx.fillText(heartStr, 15, 30);
     requestAnimationFrame(gameLoop);
 }
-
 gameLoop();
 </script>
 </body>
