@@ -1,0 +1,21 @@
+{
+  "short_name": "CyberShooter",
+  "name": "CYBER SHOOTER - GALAXY",
+  "icons": [
+    {
+      "src": "https://dummyimage.com/192x192/00ffcc/02020a.png&text=CS",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://dummyimage.com/512x512/00ffcc/02020a.png&text=CyberShooter",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "game.html",
+  "background_color": "#02020a",
+  "theme_color": "#02020a",
+  "display": "standalone",
+  "orientation": "portrait"
+}
