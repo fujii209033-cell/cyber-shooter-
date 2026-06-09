@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Space Shooter - Enemy AI Edition</title>
+    <title>Space Shooter - Space Background Edition</title>
     <style>
         html, body {
             position: fixed;
@@ -13,7 +13,7 @@
             height: 100%;
             margin: 0;
             padding: 0;
-            background-color: #050510;
+            background-color: #020208;
             overflow: hidden;
             touch-action: none;
             -webkit-user-select: none;
@@ -25,7 +25,7 @@
             align-items: center;
         }
         canvas {
-            background-color: #020208;
+            background-color: #02020a;
             border: 2px solid #3a3a78;
             max-width: 100vw;
             max-height: 100vh;
@@ -64,6 +64,21 @@ const player = {
     powerSlash: 0  
 };
 
+// 🌌 背景用のデータ（星屑と惑星）
+const stars = [];
+const planets = [];
+const maxStars = 40;
+
+// 星屑の初期生成（ゲーム開始前から漂わせる）
+for (let i = 0; i < maxStars; i++) {
+    stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() < 0.3 ? 3 : 1.5, // 30%の確率で少し大きい（手前の）星
+        speed: Math.random() * 1.5 + 0.5     // 大きい星ほど少し速く動かす
+    });
+}
+
 const COLOR_MAP = {
     '.': null,
     'C': '#00ffff', 'B': '#0055ff', 'W': '#ffffff', 
@@ -73,7 +88,9 @@ const COLOR_MAP = {
     'L': '#00ff66',                                 
     'I_R': '#ff3333', 'I_B': '#3399ff',             
     'E_B': '#ff3333',
-    'B_O': '#ff9900', 'B_Y': '#ffff00' 
+    'B_O': '#ff9900', 'B_Y': '#ffff00',
+    // 🪐 惑星用のカラー
+    'PL1': '#4d4dff', 'PL2': '#000099', 'PL3': '#0088cc' 
 };
 
 const PLAYER_SPRITE = [
@@ -104,6 +121,12 @@ const ITEM_SPRITE_RED = [
 const ITEM_SPRITE_BLUE = [
     '. . K K K . . .', '. . K I_B K . . .', '. K K K K K . .', '. K I_B I_B I_B K . .',
     '. K I_B W I_B K . .', '. K I_B I_B I_B K . .', '. K K K K K . .', '. . . . . . . .'
+].map(line => line.split(' '));
+
+// 🪐 惑星のドット絵 (8x8)
+const PLANET_SPRITE = [
+    '. . PL1 PL1 PL1 PL1 . .', '. PL1 PL3 PL1 PL1 PL1 PL1 .', 'PL1 PL3 PL3 PL1 PL1 PL2 PL1 PL1', 'PL1 PL1 PL1 PL1 PL2 PL2 PL1 PL1',
+    'PL1 PL1 PL1 PL2 PL2 PL2 PL1 PL1', 'PL1 PL1 PL2 PL2 PL2 PL1 PL1 PL2', '. PL1 PL1 PL2 PL1 PL1 PL2 .', '. . PL2 PL2 PL2 PL2 . .'
 ].map(line => line.split(' '));
 
 
@@ -138,7 +161,7 @@ function handlePointerMove(e) {
     if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
 }
 window.addEventListener("pointerdown", () => {
-    if (!isStarted) { isStarted = true; spawnLoop(); }
+    if (!isStarted) { isStarted = true; spawnLoop(); spawnPlanetLoop(); }
     else if (gameOver) { resetGame(); }
 });
 window.addEventListener("pointermove", handlePointerMove);
@@ -169,6 +192,22 @@ function spawnLoop() {
     setTimeout(spawnLoop, nextSpawn);
 }
 
+// 🪐 背景用の惑星を定期的に出現させるループ
+function spawnPlanetLoop() {
+    if (gameOver || !isStarted) return;
+    
+    // 画面上のランダムなX軸から、サイズ倍率4〜7倍（160px〜280px）の巨大惑星を出現させる
+    const scale = Math.random() * 3 + 4; 
+    const size = DOT_SIZE * 8 * scale;
+    const x = Math.random() * (canvas.width - size / 2) - size / 4; // 少し画面からはみ出るくらいが自然
+    const speed = Math.random() * 0.2 + 0.2; // 敵機より圧倒的にゆっくり動かす
+
+    planets.push({ x, y: -size, scale, speed });
+
+    // 12秒〜20秒に1回出現
+    setTimeout(spawnPlanetLoop, Math.random() * 8000 + 12000);
+}
+
 function spawnItem(x, y) {
     if (player.powerFront >= 3 && player.powerSlash >= 2) return; 
 
@@ -183,11 +222,12 @@ function spawnItem(x, y) {
 }
 
 function resetGame() {
-    bullets = []; enemyBullets = []; enemies = []; items = [];
+    bullets = []; enemyBullets = []; enemies = []; items = []; planets = [];
     score = 0; player.x = 180; player.lives = player.maxLives;
     player.powerFront = 1; player.powerSlash = 0;
     player.isInvincible = false; gameOver = false;
     spawnLoop();
+    spawnPlanetLoop();
 }
 
 function checkCollision(rect1, rect2) {
@@ -199,7 +239,37 @@ function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const currentTime = Date.now();
 
-    // 1. タイトル
+    // ==========================================
+    // ✨ 背景の描画・更新システム（ゲームオーバー中も流す）
+    // ==========================================
+    
+    // 1. 星屑の更新と描画
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+    for (let i = 0; i < stars.length; i++) {
+        let s = stars[i];
+        s.y += s.speed;
+        if (s.y > canvas.height) {
+            s.y = 0;
+            s.x = Math.random() * canvas.width;
+        }
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+    }
+
+    // 2. 🪐 惑星の更新と描画（最背面、星屑よりは手前）
+    for (let i = planets.length - 1; i >= 0; i--) {
+        let p = planets[i];
+        p.y += p.speed;
+        // 画面外に完全に消えたら配列から削除
+        if (p.y > canvas.height + (DOT_SIZE * 8 * p.scale)) {
+            planets.splice(i, 1);
+            continue;
+        }
+        drawSprite(PLANET_SPRITE, p.x, p.y, p.scale);
+    }
+
+    // ==========================================
+
+    // タイトル表示
     if (!isStarted) {
         ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center";
         ctx.fillText("CYBER SHOOTER AI", canvas.width / 2, canvas.height / 2 - 30);
@@ -208,7 +278,7 @@ function gameLoop() {
         requestAnimationFrame(gameLoop); return;
     }
 
-    // 2. ゲームオーバー
+    // ゲームオーバー表示
     if (gameOver) {
         ctx.fillStyle = "rgba(5, 5, 15, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center";
@@ -221,7 +291,7 @@ function gameLoop() {
 
     if (player.isInvincible && currentTime > player.invincibleTimer) player.isInvincible = false;
 
-    // 3. ショット生成
+    // ショット生成
     if (currentTime - lastShotTime > shotInterval) {
         const midX = player.x + player.width / 2;
 
@@ -249,12 +319,12 @@ function gameLoop() {
         lastShotTime = currentTime;
     }
 
-    // 4. 自機描画
+    // 自機描画
     if (!player.isInvincible || Math.floor(currentTime / 70) % 2 === 0) {
         drawSprite(PLAYER_SPRITE, player.x, player.y);
     }
 
-    // 5. 自機弾・ボムの更新
+    // 自機弾・ボムの更新
     for (let i = bullets.length - 1; i >= 0; i--) {
         let b = bullets[i]; b.y -= b.speedY; b.x += b.speedX;
         if (b.y < -b.height || b.x < -20 || b.x > canvas.width + 20) { bullets.splice(i, 1); continue; }
@@ -270,7 +340,7 @@ function gameLoop() {
         }
     }
 
-    // 6. 敵弾の更新
+    // 敵弾の更新
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
         let eb = enemyBullets[i]; eb.y += eb.speedY;
         if (eb.y > canvas.height) { enemyBullets.splice(i, 1); continue; }
@@ -288,7 +358,7 @@ function gameLoop() {
         }
     }
 
-    // 7. アイテムの更新
+    // アイテムの更新
     for (let i = items.length - 1; i >= 0; i--) {
         let it = items[i]; it.y += it.speed;
         if (it.y > canvas.height) { items.splice(i, 1); continue; }
@@ -304,17 +374,15 @@ function gameLoop() {
         }
     }
 
-    // 8. 敵機のAI処理・更新
+    // 敵機の更新
     for (let i = enemies.length - 1; i >= 0; i--) {
         let e = enemies[i];
-        
         e.y += e.speed;
 
         if (e.type === 'normal') {
             const targetX = player.x + player.width / 2 - e.width / 2;
             if (e.x < targetX) e.x += 1.2;
             else if (e.x > targetX) e.x -= 1.2;
-            
             drawSprite(ENEMY_NORMAL, e.x, e.y);
         } 
         else if (e.type === 'shooter') {
@@ -333,7 +401,6 @@ function gameLoop() {
                 if (e.x < 0) e.x = 0;
                 if (e.x > canvas.width - e.width) e.x = canvas.width - e.width;
             }
-
             drawSprite(ENEMY_SHOOTER, e.x, e.y);
             
             if (currentTime - e.lastShot > 1300) {
@@ -366,7 +433,6 @@ function gameLoop() {
             if (checkCollision(b, e)) {
                 bullets.splice(j, 1);
                 e.hp--; 
-                
                 if (e.hp <= 0) {
                     spawnItem(e.x + e.width/2 - 15, e.y + e.height/2 - 15); 
                     enemies.splice(i, 1);
