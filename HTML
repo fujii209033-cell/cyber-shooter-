@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Space Shooter - Enemy AI Edition</title>
+    <style>
+        html, body {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #050510;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            background-color: #020208;
+            border: 2px solid #3a3a78;
+            max-width: 100vw;
+            max-height: 100vh;
+            aspect-ratio: 2 / 3;
+            touch-action: none;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let isStarted = false;
+let gameOver = false;
+let score = 0;
+
+const DOT_SIZE = 5; 
+
+// 自機データ
+const player = {
+    x: 180,
+    y: 520,
+    width: 40,
+    height: 40,
+    maxLives: 3,
+    lives: 3,
+    isInvincible: false,
+    invincibleTimer: 0,
+    invincibleDuration: 1000,
+    powerFront: 1, 
+    powerSlash: 0  
+};
+
+const COLOR_MAP = {
+    '.': null,
+    'C': '#00ffff', 'B': '#0055ff', 'W': '#ffffff', 
+    'K': '#1a1a24', 'P': '#8000ff', 'R': '#ff0055', 
+    'Y': '#e6b800', 'O': '#ff6600',                 
+    'G': '#00cc44', 'D': '#006622',                 
+    'L': '#00ff66',                                 
+    'I_R': '#ff3333', 'I_B': '#3399ff',             
+    'E_B': '#ff3333',
+    'B_O': '#ff9900', 'B_Y': '#ffff00' 
+};
+
+const PLAYER_SPRITE = [
+    '. . . W W . . .', '. . . C C . . .', '. . B C C B . .', '. B B C C B B .',
+    '. W B B B B W .', 'B C C C C C C B', 'B B . W W . B B', '. . . W W . . .'
+].map(line => line.split(' '));
+
+const ENEMY_NORMAL = [
+    'K . . . . . . K', '. P K . . K P .', '. P P P P P P .', 'K P R P P R P K',
+    'K K P P P P K K', '. K P P P P K .', '. P K . . K P .', 'P . . . . . . P'
+].map(line => line.split(' '));
+
+const ENEMY_SHOOTER = [
+    '. K . . . . K .', 'K Y K . . K Y K', 'K Y O Y Y O Y K', '. Y Y Y Y Y Y .',
+    '. . O O O O . .', '. Y K Y Y K Y .', 'Y . K . . K . Y', 'K . . . . . . K'
+].map(line => line.split(' '));
+
+const ENEMY_HEAVY = [
+    '. . D D D D . .', '. D G G G G D .', 'D G G K K G G D', 'D G R K K R G D',
+    'D G G G G G G D', '. D G G G G D .', '. D K D D K D .', 'D . . . . . . D'
+].map(line => line.split(' '));
+
+const ITEM_SPRITE_RED = [
+    '. . K K K . . .', '. . K I_R K . . .', '. K K K K K . .', '. K I_R I_R I_R K . .',
+    '. K I_R W I_R K . .', '. K I_R I_R I_R K . .', '. K K K K K . .', '. . . . . . . .'
+].map(line => line.split(' '));
+
+const ITEM_SPRITE_BLUE = [
+    '. . K K K . . .', '. . K I_B K . . .', '. K K K K K . .', '. K I_B I_B I_B K . .',
+    '. K I_B W I_B K . .', '. K I_B I_B I_B K . .', '. K K K K K . .', '. . . . . . . .'
+].map(line => line.split(' '));
+
+
+let bullets = [];
+let enemyBullets = []; 
+let enemies = [];
+let items = [];
+let lastShotTime = 0;
+const shotInterval = 150; 
+
+function drawSprite(sprite, x, y, scale = 1) {
+    const size = DOT_SIZE * scale;
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const colorKey = sprite[r][c];
+            const color = COLOR_MAP[colorKey];
+            if (color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x + c * size, y + r * size, size, size);
+            }
+        }
+    }
+}
+
+// ポインター操作
+function handlePointerMove(e) {
+    if (!isStarted || gameOver) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    player.x = (e.clientX - rect.left) * scaleX - player.width / 2;
+    if (player.x < 0) player.x = 0;
+    if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+}
+window.addEventListener("pointerdown", () => {
+    if (!isStarted) { isStarted = true; spawnLoop(); }
+    else if (gameOver) { resetGame(); }
+});
+window.addEventListener("pointermove", handlePointerMove);
+window.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+
+function spawnLoop() {
+    if (gameOver || !isStarted) return;
+    
+    const rand = Math.random();
+    let type = 'normal';
+    let width = 40, height = 40, hp = 1, speed = Math.random() * 1.5 + 1.5;
+
+    if (rand > 0.75) { 
+        type = 'shooter';
+        speed = Math.random() * 1.0 + 1.2; 
+    } else if (rand > 0.55) { 
+        type = 'heavy';   
+        width = 60; height = 60; 
+        hp = 10; 
+        speed = 0.8; 
+    }
+
+    const x = Math.random() * (canvas.width - width);
+    enemies.push({ x, y: -height, width, height, speed, type, hp, maxHp: hp, lastShot: Date.now() });
+
+    const nextSpawn = Math.max(300, 1000 - score * 6);
+    setTimeout(spawnLoop, nextSpawn);
+}
+
+function spawnItem(x, y) {
+    if (player.powerFront >= 3 && player.powerSlash >= 2) return; 
+
+    if (Math.random() < 0.28) {
+        let itemType = 'front';
+        if (player.powerFront >= 3) itemType = 'slash';
+        else if (player.powerSlash >= 2) itemType = 'front';
+        else itemType = Math.random() < 0.5 ? 'front' : 'slash';
+
+        items.push({ x, y, width: 35, height: 35, speed: 2, itemType });
+    }
+}
+
+function resetGame() {
+    bullets = []; enemyBullets = []; enemies = []; items = [];
+    score = 0; player.x = 180; player.lives = player.maxLives;
+    player.powerFront = 1; player.powerSlash = 0;
+    player.isInvincible = false; gameOver = false;
+    spawnLoop();
+}
+
+function checkCollision(rect1, rect2) {
+    return rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x &&
+           rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y;
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const currentTime = Date.now();
+
+    // 1. タイトル
+    if (!isStarted) {
+        ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("CYBER SHOOTER AI", canvas.width / 2, canvas.height / 2 - 30);
+        ctx.fillStyle = "#00ffcc"; ctx.font = "18px sans-serif";
+        ctx.fillText("画面をタップしてスタート", canvas.width / 2, canvas.height / 2 + 20);
+        requestAnimationFrame(gameLoop); return;
+    }
+
+    // 2. ゲームオーバー
+    if (gameOver) {
+        ctx.fillStyle = "rgba(5, 5, 15, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff0055"; ctx.font = "bold 32px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif";
+        ctx.fillText(`SCORE: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillStyle = "#00ffcc"; ctx.fillText("タップしてリトライ", canvas.width / 2, canvas.height / 2 + 70);
+        requestAnimationFrame(gameLoop); return;
+    }
+
+    if (player.isInvincible && currentTime > player.invincibleTimer) player.isInvincible = false;
+
+    // 3. ショット生成
+    if (currentTime - lastShotTime > shotInterval) {
+        const midX = player.x + player.width / 2;
+
+        if (player.powerFront === 1) {
+            bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+        } else if (player.powerFront === 2) {
+            bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+            bullets.push({ x: player.x + player.width - 6, y: player.y, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+        } else if (player.powerFront >= 3) {
+            bullets.push({ x: midX - 3, y: player.y - 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+            bullets.push({ x: player.x - 5, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+            bullets.push({ x: player.x + player.width - 1, y: player.y + 10, width: 6, height: 20, speedY: 13, speedX: 0, isBomb: false });
+        }
+
+        if (player.powerSlash === 1) {
+            bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true });
+            bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true });
+        } else if (player.powerSlash >= 2) {
+            bullets.push({ x: player.x - 8, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: -2, isBomb: true });
+            bullets.push({ x: player.x + player.width - 6, y: player.y + 10, width: 14, height: 14, speedY: 4, speedX: 2, isBomb: true });
+            bullets.push({ x: player.x - 12, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: -4, isBomb: true });
+            bullets.push({ x: player.x + player.width + 2, y: player.y + 15, width: 14, height: 14, speedY: 3, speedX: 4, isBomb: true });
+        }
+
+        lastShotTime = currentTime;
+    }
+
+    // 4. 自機描画
+    if (!player.isInvincible || Math.floor(currentTime / 70) % 2 === 0) {
+        drawSprite(PLAYER_SPRITE, player.x, player.y);
+    }
+
+    // 5. 自機弾・ボムの更新
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i]; b.y -= b.speedY; b.x += b.speedX;
+        if (b.y < -b.height || b.x < -20 || b.x > canvas.width + 20) { bullets.splice(i, 1); continue; }
+        
+        if (b.isBomb) {
+            ctx.fillStyle = COLOR_MAP['B_O'];
+            ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = COLOR_MAP['B_Y'];
+            ctx.beginPath(); ctx.arc(b.x + 7, b.y + 7, 4, 0, Math.PI * 2); ctx.fill();
+        } else {
+            ctx.fillStyle = COLOR_MAP['L']; ctx.fillRect(b.x, b.y, b.width, b.height);
+            ctx.fillStyle = COLOR_MAP['W']; ctx.fillRect(b.x + 1.5, b.y + 2, b.width - 3, b.height - 4);
+        }
+    }
+
+    // 6. 敵弾の更新
+    for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        let eb = enemyBullets[i]; eb.y += eb.speedY;
+        if (eb.y > canvas.height) { enemyBullets.splice(i, 1); continue; }
+        
+        ctx.fillStyle = COLOR_MAP['E_B'];
+        ctx.beginPath(); ctx.arc(eb.x + 4, eb.y + 4, 5, 0, Math.PI * 2); ctx.fill();
+
+        if (!player.isInvincible && checkCollision(player, eb)) {
+            enemyBullets.splice(i, 1); player.lives--;
+            if (player.powerFront > 1) player.powerFront--;
+            if (player.powerSlash > 0) player.powerSlash--;
+            if (player.lives <= 0) gameOver = true;
+            else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; }
+            continue;
+        }
+    }
+
+    // 7. アイテムの更新
+    for (let i = items.length - 1; i >= 0; i--) {
+        let it = items[i]; it.y += it.speed;
+        if (it.y > canvas.height) { items.splice(i, 1); continue; }
+
+        if (it.itemType === 'front') drawSprite(ITEM_SPRITE_RED, it.x, it.y, 0.8);
+        else drawSprite(ITEM_SPRITE_BLUE, it.x, it.y, 0.8);
+
+        if (checkCollision(player, it)) {
+            items.splice(i, 1);
+            if (it.itemType === 'front' && player.powerFront < 3) player.powerFront++;
+            if (it.itemType === 'slash' && player.powerSlash < 2) player.powerSlash++;
+            score += 200; continue;
+        }
+    }
+
+    // 8. 敵機のAI処理・更新
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        let e = enemies[i];
+        
+        e.y += e.speed;
+
+        if (e.type === 'normal') {
+            const targetX = player.x + player.width / 2 - e.width / 2;
+            if (e.x < targetX) e.x += 1.2;
+            else if (e.x > targetX) e.x -= 1.2;
+            
+            drawSprite(ENEMY_NORMAL, e.x, e.y);
+        } 
+        else if (e.type === 'shooter') {
+            let danger = false;
+            let dodgeDir = 0;
+            for (let j = 0; j < bullets.length; j++) {
+                let b = bullets[j];
+                if (Math.abs((b.x + b.width/2) - (e.x + e.width/2)) < 45 && b.y > e.y && b.y < e.y + 180) {
+                    danger = true;
+                    dodgeDir = (b.x + b.width/2) > (e.x + e.width/2) ? -2.5 : 2.5;
+                    break;
+                }
+            }
+            if (danger) {
+                e.x += dodgeDir; 
+                if (e.x < 0) e.x = 0;
+                if (e.x > canvas.width - e.width) e.x = canvas.width - e.width;
+            }
+
+            drawSprite(ENEMY_SHOOTER, e.x, e.y);
+            
+            if (currentTime - e.lastShot > 1300) {
+                enemyBullets.push({ x: e.x + 16, y: e.y + 35, width: 8, height: 8, speedY: 5 });
+                e.lastShot = currentTime;
+            }
+        } 
+        else if (e.type === 'heavy') {
+            drawSprite(ENEMY_HEAVY, e.x, e.y, 1.5); 
+            
+            ctx.fillStyle = '#555';
+            ctx.fillRect(e.x, e.y - 8, e.width, 4);
+            ctx.fillStyle = '#00ff66';
+            ctx.fillRect(e.x, e.y - 8, e.width * (e.hp / e.maxHp), 4);
+        }
+
+        if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
+
+        if (!player.isInvincible && checkCollision(player, e)) {
+            enemies.splice(i, 1); player.lives--;
+            if (player.powerFront > 1) player.powerFront--;
+            if (player.powerSlash > 0) player.powerSlash--;
+            if (player.lives <= 0) gameOver = true;
+            else { player.isInvincible = true; player.invincibleTimer = currentTime + player.invincibleDuration; }
+            continue;
+        }
+
+        for (let j = bullets.length - 1; j >= 0; j--) {
+            let b = bullets[j];
+            if (checkCollision(b, e)) {
+                bullets.splice(j, 1);
+                e.hp--; 
+                
+                if (e.hp <= 0) {
+                    spawnItem(e.x + e.width/2 - 15, e.y + e.height/2 - 15); 
+                    enemies.splice(i, 1);
+                    score += e.type === 'heavy' ? 400 : 100; 
+                }
+                break;
+            }
+        }
+    }
+
+    // 📊 UI
+    ctx.fillStyle = "#fff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "right";
+    ctx.fillText(`SCORE: ${score}`, canvas.width - 15, 30);
+    ctx.fillStyle = "#ff4444"; ctx.fillText(`F-POWER: ${player.powerFront}/3`, canvas.width - 15, 52);
+    ctx.fillStyle = "#3399ff"; ctx.fillText(`S-POWER: ${player.powerSlash}/2`, canvas.width - 15, 74);
+
+    ctx.textAlign = "left"; ctx.font = "22px sans-serif";
+    let heartStr = ""; for (let i = 0; i < player.lives; i++) heartStr += "❤️";
+    ctx.fillText(heartStr, 15, 30);
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
